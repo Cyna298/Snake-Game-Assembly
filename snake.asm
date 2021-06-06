@@ -1,1305 +1,1591 @@
-org 0x100
+org 100h
+;////////////////////////////////////////////////////////////////////////////////////
+;Subroutines THUS FAR Implemented inorder
+; grow: >increase the size of snake by one char, takes no parameters,
+;		can be called N times to increase the size by N chars
+
+; disp_snake:> displays snake
+;
+; disp_score:> displays score
+;									 
+; delay:> hmmm......delay I suppose...
+
+; check_valid:> checks whether head is going to a valid place
+; shift_body: > shifts the body along, used in conjunction with snake movement subroutines
+
+; snake,up,down,left and right: >move the snake in implied direction
+
+; Overlap: > a versatile subroutine,takes the overlapper, the thing being overlapped and
+;			 the size of the overlapped objects as parameters, basically a linear search
+;			 which returns a bool value
+;			can be used to check if the food to be placed is being overlapped by snake's body
+; 			or an obstacle, if the snake's head is overlapping with its body
+;			or an obtacle, snake's head is overlapping food.....etc.
+
+; play_sound:> takes two parameters from the stack and plays a sound on the speakers.
+;				the first one (bp+6) is the duration for beep
+;			   the second one (bp+4) is the frequency of the beep
+
+;kbisr: >overloads WASD keys to trigger movement flags, press Q to close program
+
+;interface:> only contains a heart at the moment :)
+
+;heart:> prints a heart, takes offset on the screen as parameter
+
+;clrscr:> clears screen
+
+;generatefood:> generates a random food position and stores the position in a global variable
+
+;eating:> checks if the snake can eat the food and if it can, ingest the food and grow the snake
+
+;scoreupdating:> if the snake has eaten the food, update the score
+;////////////////////////////////////////////////////////////////////////////////////
+
+;///////////////////////////////////////////////////////////////////////////////////
+;SUGGESTED Subroutins
+
+; Take_a_life:> a wrapper for Overlap and decrementing lives variable
+
+;Gen_StageN:> will generate a stage with obstacles, Gen_Stage1 can simply be a box....
+
+;Timer(A TSR)
+
+; Speed:> next gen of Delay, optimizes the speed along columns and rows, create a Speed global variable
+
+;Increase_Speed:> change the Speed variable to increase the speed and runs every 5 seconds (hooked with timer maybe)
+ 
+;TO BE CONTINUED.............
+;/////////////////////////////////////////////////////////////////////////////////
 jmp start
-;---------------------------------------
-snakePreserve: dw 1040,1038,1036,1034,1032,1030,1028,1026,1024,1022,1020,1018,1016,1014,1012,1010,1008,1006,1004,1002
-			times 220 dw 0;the full length of the snake
 
-snake: 		dw 1040,1038,1036,1034,1032,1030,1028,1026,1024,1022,1020,1018,1016,1014,1012,1010,1008,1006,1004,1002
-			times 220 dw 0;the full length of the snake
-sizesnake:	dw 20
-sizecounter: dw 0
-time: dw 0
-time2: dw 0
-smoothnes: dw 0
-timecounter: db 0
-snakecounter: db 0
-Ssnake: db 'SSSSSSnake'
-printTime: db 'time:'
-printScore: db 'score:'
-winGame: db 'Yay You Won'
-endGame: db 'Game Over' ; all these end atributess are used in game over sub
-endScore:db 'Your Score:'
-endTime:db 'Your Time:'
-speed: db 10;initial speed in 100 seconds you acheive maximum speed
-movementflag: dw 2
-fruit: dw 0
-fruitvalue:	dw 0
-fruit1: dw 0
-fruit2: dw 0
-fruitflag: dw 0
-randRow: dw 9
-randCol: dw 37
-m1: dw 19
-a1: dw 5
-c1: dw 4
-seed1: dw 9
-m2: dw 72
-a2: dw 13
-c2: dw 11
-seed2: dw 37
-level: dw 0
-level1: 
-		dw	2458,2460,2462,2464,2466,2468,2470,2472,2474,2476,2478,2480,2482,2484,2486,2488
-		dw	2490,2492,2494,2496,2498,2500,2502,2504,2506
-		dw	2298,2138,1978,1818
-		dw	2346,2186,2026,1866
-		dw	1820,1822,1824,1826
-		dw	1864,1862,1860,1858
+oldisr: dd 0
+nos:db 3;no. of stages
+;////////FLAGS////////////////
+close: db 0
+left: db 0
+right: db 0
+up: db 0
+down: db 0
+foodplaced: db 0
+validfood: db 1
+;//////SNAKE-PARAMETERS/////////////////////
+reincarnation:dw 1672,1674,1676,1678,1680,1682,1684,1686,1688,1690,1692,1694,1696,1698,1700,1702,1704,1706,1708,1710,0xffff; these will be the values of di-offset 
+snake: dw 1672,1674,1676,1678,1680,1682,1684,1686,1688,1690,1692,1694,1696,1698,1700,1702,1704,1706,1708,1710,0xffff; these will be the values of di-offset 
+extension:times 228 dw 0
+sizeS: dw 20
+lives: db 3
+Score: dw 0
+SpeedConstant: dw 4096
+SpeedFlag: db 1
+SpeedNum:dw 60
+;//////POISON-PARAMETER/////////////////////
+poisonpos: dw 0
+poisonitem: dw 0x1632		;cursed remains of old snakes, black magic
+poisonplaced: db 0
+;//////FOOD-PARAMETERS//////////////////////
+foodpos: dw 0
+fooditem: dw 0x1625	;%
+fooditem2: dw 0x2340;@
+fooditem3: dw 0x3426;&
+fooditem4: dw 0x467E ;~
+currentfood: dw 0x1625
+cycle: dw 0
+req: dw 25
+;//////AUDIO-PARAMETERS//////////////////////
+eatS: dw 4560
+deathS: dw 9121
+initializationS: dw 1917
+initializationT: dw 65000
+normalT: dw 1500
+;		G D G A A# F6 F5 A A# G6 D F A A# C6 F A A#
+notes: dw 3043,4063,3043,2711,2559,1715,3416,2711,2559,1521,4063,3416,2711,2559,2280,3416,2711,2559
+note_off: dw 0
+;////////////INTERFACE-COMPONENTS//////////////////////////
+heartS: dw 0x0720,0x0720,0x1720,0x1720,0x0720,0x0720,0x1720,0x1720,0x0720
+		dw 0x0720,0x1720,0x1720,0x1720,0x1720,0x1720,0x1720,0x1720,0x1720
+		dw 0x0720,0x0720,0x1720,0x1720,0x1720,0x1720,0x1720,0x1720,0x0720
+		dw 0x0720,0x0720,0x0720,0x0720,0x1720,0x1720,0x0720,0x0720,0x0720
+win: dw 'YOU WIN'
+lose: dw 'YOU LOSE'		
+Lives: dw 'Lives Remaining'		
+Scoredisp: dw 'Score'
+time: dw 'Time: :  '
+oldtime: dd 0
+tickcount: dw 0
+sec: dw 0
+min: dw 0
+bkcol: dw 0x002f;0=blk,1=blu,2=gr,3=tr,4=rd,5=pp,6=or,7=wt
+obscol: dw 0x2223
+sbod: dw 0x7323
+head: dw 0x1032
+;///////////SNAKE'S BODY RELATED SUBROUTINES//////////////////////////////////		
+;//////////////////GROW///////////////
+grow:
+	push ax
+	push bx
+	mov bx,[sizeS]
+	shl bx,1
+	sub bx,2
+	mov ax,[snake+bx]
+	add bx,2
+	mov [snake+bx],ax
+	add bx,2
+	mov ax,0xffff
+	mov [snake+bx],ax
+	mov ax,1
+	add [sizeS],ax
+	pop bx
+	pop ax
+	ret
 
+;////////////////////	POISON-E///////////////
+poison_E:
+		push ax
+		push di
+		push bx
+		push 0xb800
+		pop es
+		cmp word [sizeS],0
+		jb kill
+		mov di,[sizeS]
+		sub di,5
+		mov [sizeS],di
+		shl di,1
+		mov word [snake+di],0xffff
+		mov ax,[bkcol]
+		mov bx,[di]
+		mov [es:bx],ax
+		add di, 2
+		add di,snake
+		erase:cmp word [di],0xFFFF
+				je endpe
+				mov ax,[bkcol]
+				mov bx,[di]
+				mov [es:bx],ax
+				add di,2
+				jmp erase
+		kill:
+			dec byte [lives]
 		
-		dw	3044,3046,3048,3050,3052,3054,3056,3058,3060,3062,3064,3066,3068,3070,3072,3074
-		dw	3076,3078,3080,3082,3084,3086,3088,3090,3092,3094,3096,3098,3100,3102
-		dw	3144,3146,3148,3150,3152,3154,3156,3158,3160,3162,3164,3166,3168,3170,3172,3174
-		dw	3176,3178,3180,3182,3184,3186,3188,3190,3192,3194
-		score: dw 0
-life: db 3
-win: db 0; boolean to check if the game is over becasue player won or not 
-welcomeMessage: db 'This is the SSSSSSnake Game';27
-welcomeMessage2: db 'Press Any Key to Start the Game';31
-welcomeMessage3: db 'Press X on the right corner to Exit';35
-welcomeMessage4: db 'You have played Snake on nokia 3310 so you know basic rules';59
-welcomeMessage5: db 'This game gives you 3 extra life and some bonus features';56
-welcomeMessage6: db 'Eat 12 fruits basic Fruits before the timer runs out';52
-
-
-;---------------------------------------
-
-
-;subroutine to get random col and rows
-Random:
+		endpe:
+		mov [es:bx],ax
+		pop bx
+		pop di
+		pop ax
+		ret
+;//////////////////DISP_SNAKE///////////////		
+disp_snake:
+	push ax
+	push di
+	push bx
+	mov ax,0xb800
+	mov es,ax
+	mov ax,[head];head
+	mov di,[snake]
+	mov bx,2
+	mov [es:di],ax
+	mov ax,[sbod];body
+	loop1:
+		mov di,[snake+bx]
+		cmp di,0xffff
+		je out1
+		add bx,2
+		mov [es:di],ax
+		jmp loop1
+		
+	out1:
+	sub bx,2
+	mov di,[snake+bx]
 	
+	mov bx,di;CHANGED THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	cmp word [currentfood],bx
+	je dontplace
+	mov bx,[bkcol]
+	mov word [es:di],bx
+	dontplace:
+	pop bx
+	pop di
+	pop ax
+	ret
+
+;//////////delay///////////////
+;////////////SPEED//////////////////	
+	delayL:
 	push ax
 	push bx
 	push dx
+	push cx
+	cmp word [SpeedConstant],0
+	je nes
+	call incrementspeedL
+	nes:
+	mov dx,[cs:SpeedConstant]
 	
-	xor dx, dx
-	mov word ax, [a1]
-	mov word bx, [seed1]
-	mul bx
-	add word ax, [c1]
-	mov word bx, [m1]
-	div bx
-	mov word [seed1], dx
-	add dx, 5
-	mov word [randRow], dx
 	
-	xor dx, dx
-	mov word ax, [a2]
-	mov word bx, [seed2]
-	mul bx
-	add word ax, [c2]
-	mov word bx, [m2]
-	div bx
-	mov word [seed2], dx
-	add dx, 4
-	mov word [randCol], dx
-	
+	kl:
+	mov cx, 0xFF
+	loopdelay:
+	dec cx
+	jnz loopdelay
+	dec dx
+	cmp dx, 0
+	jg kl
+
+	pop cx
 	pop dx
 	pop bx
 	pop ax
 	ret
 	
-;----------------------------------	
+
+incrementspeedL:
+	push dx
+	push ax
+	mov ax, [cs:sec]
+	mov dl,20
+	div dl
+	cmp ah,0
+	jne setagain
 	
+	cmp byte [cs:SpeedFlag],1
+	je incrementspeedpops
+	
+	shr word [cs:SpeedConstant],1
+	or byte [cs:SpeedFlag],1
+	jmp incrementspeedpops
+	
+	setagain:
+	and byte [cs:SpeedFlag],0
+	
+	incrementspeedpops:
+	pop ax
+	pop dx
+	ret	
+	
+;/////////////////////////////////////////////////////////	
 
+		
+delay:
+	push ax
+	push bx
+	push dx
+	push cx
+	
+	cmp word [SpeedNum],0
+	je nes2
+	call incrementspeed
+	nes2:
+	mov dx,[cs:SpeedNum]
+	
+	kl2:
+	mov cx, 0xfff
+	loopdelay2:
+	dec cx
+	jnz loopdelay2
+	dec dx
+	cmp dx, 0
+	jg kl2
 
-
-
-; subroutine to print a number at top left of screen
-; takes the number to be printed as its parameter
-printnum:
+	pop cx
+	pop dx
+	pop bx
+	pop ax
+	ret
+	
+	
+incrementspeed:
+	push dx
+	push ax
+	mov ax, [cs:sec]
+	mov dl,20
+	div dl
+	cmp ah,0
+	jne setagain1
+	
+	cmp byte [cs:SpeedFlag],1
+	je incrementspeedpops1
+	
+	sub word [cs:SpeedNum],4
+	or byte [cs:SpeedFlag],1
+	jmp incrementspeedpops1
+	
+	setagain1:
+	and byte [cs:SpeedFlag],0
+	
+	incrementspeedpops1:
+	pop ax
+	pop dx
+	ret	
+	
+;////////////////CHECK_VALID////////////////
+check_valid:
 		push bp
-		mov bp, sp
-		push es
-		push ax
-		push bx
-		push cx
-		push dx
+		mov bp,sp
 		push di
-		mov ax, 0xb800
-		mov es, ax ; point es to video base
-		mov ax, [bp+4] ; load number in ax
-		mov bx, 10 ; use base 10 for division
-		mov cx, 0 ; initialize count of digits
-nextdigit:
-		mov dx, 0 ; zero upper half of dividend
-		div bx ; divide by 10
-		add dl, 0x30 ; convert digit into ascii value
-		push dx ; save ascii value on stack
-		inc cx ; increment count of values
-		cmp ax, 0 ; is the quotient zero
-		jnz nextdigit ; if no divide it again
-		mov di, [bp + 6] ; point di to 70th column
-nextpos:
-		pop dx ; remove a digit from the stack
-		mov dh, 0x07 ; use normal attribute
-		mov [es:di], dx ; print char on screen
-		add di, 2 ; move to next screen location
-		loop nextpos ; repeat for all digits on stack
+		mov di,[bp+4]
+		mov ax,[es:di]
+		cmp byte al,0x23
+		jne validspace
+		mov ax,0
+		jmp endc
+		validspace:
+		mov ax,1
+		endc:
 		pop di
-		pop dx
-		pop cx
-		pop bx
-		pop ax 
-		pop es
 		pop bp
-		ret 4 
-;---------------------------------------------
+		ret 2
+;//////////////////SHIFT_BODY///////////////	
+	shift_body:
+		mov di,[snake+bx]
+		cmp di,0xffff
+		je exitu
+		mov [snake+bx],si
+		add bx,2
+		mov si,[snake+bx]
+		cmp si,0xffff
+		je exitu
+		mov [snake+bx],di
+		add bx,2
+		jmp shift_body
+		exitu:
+		ret
+;//////////////////SNAKEUP///////////////
+snakeup:
+	push ax
+	push di
+	push bx
+	mov bx,[snake] ; moving the head
+	mov di,160
+	cmp bx,960
+	jnb nowrapu
+	add bx,3200
+	nowrapu:
+	sub bx,di
+	push bx
+	call check_valid
+	cmp ax,0
+	je dead1
+	mov si,[snake]
+	mov [snake],bx
+	mov bx,2	
 
+	call shift_body
+	jmp endu
+	dead1:
+	call body_collision
+	endu:
+	pop bx
+	pop di
+	pop ax
+	ret
+;//////////////////SNAKEDOWN///////////////	
+snakedown:
+	push ax
+	push di
+	push bx
+	mov bx,[snake] ; moving the head
+	mov di,160
+	cmp bx,3840
+	jb nowrapd
+	sub bx,3200
+	nowrapd:
+	add bx,di
+	push bx
+	call check_valid
+	cmp ax,0
+	je dead2
+	mov si,[snake]
+	mov [snake],bx
+	mov bx,2	
 
+	call shift_body
+	jmp endd
+	dead2:
+	call body_collision
+	endd:
+	pop bx
+	pop di
+	pop ax
+	ret
+;//////////////////SNAKELEFT///////////////		
+snakeleft:
+	push di
+	push bx
+	push ax
+	push dx
+	mov bx,[snake] ; moving the head
+	mov di,2
+	mov ax,bx
+	xor dx,dx
+	mov cx,160
+	div cx
+	
+	cmp dx,0
+	jne nowrapl
+	add bx,160
+	nowrapl:
+	sub bx,di
+	push bx
+	call check_valid
+	cmp ax,0
+	je dead3
+	mov si,[snake]
+	mov [snake],bx
+	mov bx,2	
 
-;subroutine to print sanke
-printsnake: 	push ax
-				push cx
-				push si
-				push di
-				push es
-				push bx
+	call shift_body
+	jmp endl
+	dead3:
+	call body_collision
+	endl:
+	pop dx
+	pop ax
+	pop bx
+	pop di
+	ret
 
+	
+	
+;//////////////////SNAKERIGHT///////////////		
+snakeright:
+	push di
+	push bx
+	push ax
+	push dx
+	mov bx,[snake] ; moving the head
+	mov di,2
+	mov ax,bx
+	xor dx,dx
+	add ax,2
+	mov cx,160
+	div cx
+	
+	cmp dx,0
+	jne nowrapr
+	sub bx,160
+	nowrapr:
+	add bx,di
+	push bx
+	call check_valid
+	cmp ax,0
+	je dead4
+	mov si,[snake]
+	mov [snake],bx
+	mov bx,2	
 
-				mov cx,[sizesnake]
-				dec cx
-				mov bx,snake
-				xor si,si
-				mov ax,0xb800
-				mov es,ax
-				mov ah,64
-				mov al,' '
-				mov di,[bx+si]
-				mov word [es:di],ax
-				mov ah,07
-				mov al, 4
-				
-l1_printsnake:	add si,2
-				mov di,[bx+si]
-				mov word [es:di],ax
-				loop l1_printsnake
+	call shift_body
+	jmp endr
+	dead4:
+	call body_collision
+	endr:
+	pop dx
+	pop ax
+	pop bx
+	pop di
+	ret
 
-				pop bx
-				pop	es
-				pop di
-				pop si
-				pop cx
-				pop ax
-				ret
-				
-;-------------------------------
-printfruit: push bp
-			mov bp,sp
-			push ax
-			push bx
-			push di
-			push es
-			push cx
-			push dx
-			
-			
-
-			;in al,61h
-			;and al,11111100b
-			;out 61h,al
-			push 4304
-			call soundcreate
-			mov ax,0xb800
-			mov es,ax
-			mov ax,[bp+4];row
-			mov bx,160
-			mul bx
-			mov bx,[bp+6];col
-			shl bx,1
-			add ax,bx
-			mov di,[fruit]
-			mov di,ax
-						cmp word [bp+8],0
-						jne s1_printfruit
-						mov al,254
-						mov ah,160
-						
-s1_printfruit:			cmp word [bp+8],1
-						jne s2_printfruit
-						mov al,2
-						mov ah,164
-						mov word [fruit1],di
-						mov word [fruitvalue],0
-s2_printfruit:			cmp word [bp+8],2
-						jne s3_printfruit
-						mov al,20
-						mov ah,176
-						mov word [fruit2],di
-						mov word [fruitvalue],0
-						
-s3_printfruit:			mov word [es:di],ax
-						mov word [fruit],di
-			
-			pop dx
-			pop cx
-			pop es
-			pop di
-			pop bx
-			pop ax
-			pop bp
-			ret 6
-
-;----------------------------------
-; sub to reset the game for one life
-lifeReset: 
+	
+;///////////////////BODY_COLLISION	///////////////////
+del:
+	push cx
+	mov cx,0xf000
+	a:
+	sub cx,1
+	jnz a
+	pop cx 
+	ret
+body_collision:
+	push cx
+	push si
+	push di
+	push ax
+	push bx
+	push dx
+	
+		mov bx,snake
+		mov cx,[sizeS]
+		mov ax,[bkcol]
+		loopi:
+			mov di,[bx]
+			mov [es:di],ax
+			add bx,2
+			call del
+			loop loopi
 		
-		push ax
-		push bx
-		push cx
-		push di
-		push si
-		push es
-		
-		mov ax,0xb800
-		mov es,ax
-		mov si, snakePreserve
-		mov di, snake
-		xor bx, bx
-		mov cx, 120
-L1_lifeReset:
-		mov ax, [si + bx]
-		mov [di + bx], ax
-		add bx, 2
-		loop L1_lifeReset
-		
-		
-		mov word [sizesnake], 20
-		mov word [snakecounter], 0
-		mov word [sizecounter] , 0
-		mov byte [speed],10;initial speed in 100 seconds you acheive maximum speed
-		mov word [movementflag]	,2
-		mov word [fruit],0
-		mov word [randRow],9
-		mov word [randCol], 37
-		mov word [time],0
-		
-		
-		
-		
-		
-		call printBorder
-		call printsnake
-		push word [fruitvalue]
-		push word [randCol]
-		push word [randRow]
-		call printfruit
-		cmp word [level],1
-		jne s1_lifeReset
-				mov bx,level1
-				mov cx,97
-L2_lifeReset:	mov di,[bx]
-				mov word [es:di],0x1020
-				add bx,2
-				loop L2_lifeReset
-		
-s1_lifeReset:	
+		mov cx,21
+		push cs
 		pop es
-		pop si
-		pop di
-		pop cx
-		pop bx
-		pop ax
-		
-		
-		ret
-		
-;----------------
-; a sub sub to deduct life
-lifeDeduct:
-		push ax
-				xor ax, ax
-				mov byte al, [life]
-				shl ax, 1
-				add ax, 160
-				push ax
-				call deletelife
-				sub byte [life], 1
-		pop ax
-		ret
-;------------------------------
-;sub to detect collision
-
-colisionDetection:
-		
-		push ax
-		push bx
-		push dx
-		push cx
-		push si
-		
-							cmp word [level],2
-							jb s10_colisionDetection
-							cmp word [sizesnake],32
-							jne s14_colisionDetection
-							mov word [win],1
-							call gameOver
-s14_colisionDetection:		cmp word [snake],804 ; left top
-							ja s11_colisionDetection;lifeReset
-							add word [snake],3040
-s11_colisionDetection:		cmp word [snake], 3836; right bottom
-							jb s12_colisionDetection;lifeReset
-							sub word [snake],3040
-s12_colisionDetection		xor dx,dx
-							mov word ax, [snake]
-							mov bx, 160
-							div bx
-		
-							cmp dx, 4 ; left border
-							jae s13_colisionDetection;lifeReset
-							add word [snake],152
-s13_colisionDetection:		cmp dx, 154 ; right border
-							jbe s10_colisionDetection;lifeReset
-							sub word [snake],152
-							
-s10_colisionDetection:							
-							cmp word [snake],804 ; left top
-							jb s2_colisionDetection;lifeReset
-							cmp word [snake], 3836; right bottom
-							ja s2_colisionDetection;lifeReset
-							xor dx,dx
-							mov word ax, [snake]
-							mov bx, 160
-							div bx
-		
-							cmp dx, 4 ; left border
-							jb s2_colisionDetection;lifeReset
-							cmp dx, 154 ; right border
-							ja s2_colisionDetection;lifeReset
-		
-							
-							mov ax,[snake]
-							cmp ax,[fruit1]
-							jne s5_colisionDetection
-							add word [sizecounter],20
-							
-s5_colisionDetection:		cmp ax,[fruit2]
-							jne s7_colisionDetection
-							call lifeReset
-s7_colisionDetection:		cmp ax,[fruit];checks if the fruit is eaten
-							jne s8_colisionDetection
-							add word [score], 10
-							cmp word [score],80
-							jne s4_colisionDetection
-							mov word [fruitvalue],1
-s4_colisionDetection:		add word [sizecounter],4
-							jmp s3_colisionDetection
-s2_colisionDetection:		jmp colision
-s3_colisionDetection:
-							
-l3_colisionDetection:		call Random
-							mov ax,[randRow];row
-							mov bx,160
-							mul bx
-							mov bx,[randCol];col
-							shl bx,1
-							add ax,bx
-							jmp s9_colisionDetection
-s8_colisionDetection:		jmp s1_colisionDetection					
-s9_colisionDetection:		mov cx,97
-							mov bx,level1
-							xor si,si
-l5_colisionDetection:		cmp [bx+si],ax
-							je l3_colisionDetection
-							add si,2
-							loop l5_colisionDetection
-							mov cx,[sizesnake];check if fruit lies on snake himself
-							sub cx,1
-							mov si,2
-l2_colisionDetection:		cmp ax,[snake+si]
-							je l3_colisionDetection;if lies on snake generates another one
-							add si,2
-							loop l2_colisionDetection
-							cmp word [fruitflag],1
-							jne s6_colisionDetection
-							mov word [fruitflag],0
-							mov word [fruitvalue],2
-							push word [fruitvalue]
-							push word [randCol]
-							push word [randRow]
-							call printfruit;creates new fruit
-							jmp l3_colisionDetection
-s6_colisionDetection:		push word [fruitvalue]
-							push word [randCol]
-							push word [randRow]
-							call printfruit;creates new fruit
-		
-s1_colisionDetection:		mov cx,[sizesnake];check if snakes bites himself
-							sub cx,1
-							mov ax,[snake]
-							mov si,2
-l1_colisionDetection:		cmp ax,[snake+si]
-							je colision
-							add si,2
-							loop l1_colisionDetection
-							
-							cmp word[level],1
-							jne colisoinBack
-							mov cx,97
-							mov ax,[snake]
-							mov bx,level1
-							xor si,si
-l4_colisionDetection:		cmp [bx+si],ax
-							je colision
-							add si,2
-							loop l4_colisionDetection
-							jmp colisoinBack
-
-colision: 
-				cmp byte [life], 0
-				je over
-				call lifeDeduct
-				call lifeReset
-				jmp colisoinBack
-over:
-				call gameOver
-				
-colisoinBack:		
-				pop si
-				pop cx
-				pop dx
-				pop bx
-				pop ax
-				ret
-		
-
-
-;-----------------
-; sub to check time
-timeCheck:
-		push ax
-		push bx
-		push cx
-		Push dx
-		
-		mov ax, [time]
-		cmp word ax, 100
-		jne time_Back
-		jmp timeDO
-timeCheck1:
-		cmp word ax, 200
-		jne timeCheck2
-		jmp timeDO
-timeCheck2:
-		cmp word ax, 299
-		jne timeCheck3
-		jmp timeDO
-timeCheck3:
-		cmp word ax, 399
-		jne time_Back
-timeDO:
-		cmp byte [life], 0
-		je overu
-		call lifeDeduct
-		call lifeReset
-		;mov [time], ax
-time_Back:	
-		pop dx
-		pop cx
-		pop bx
-		pop ax
-		ret
-overu: ;another version of over in this sub
-			call gameOver		
-;-----------------
-timer: 
-		push ax
-		push dx
-		push bx
-		push es
-		push di
-		
-		;out 42h, al
-		;mov al, ah
-		;out 42h, al
-		
-		inc byte [cs:timecounter]; increment tick count
-		cmp byte[cs:timecounter] , 100
-		jne s4_timer
-		mov bx,154 ; position of time , this is for printnum 
-		push bx
-		inc word [cs:time]
-		inc word [cs:time2]
-		cmp word [cs:score],140
-		jne s3_timer
-		mov word [fruitvalue],1
-s3_timer:		mov bx,20;speed change after 20 seconds
-		xor dx,dx
-		mov ax,[cs:time]
-		div bx
-		cmp dx,0
-		jne s1_timer
-		mov ax,0xb800
-		mov es,ax
-		mov di,[fruit2]
-		mov word [es:di],0x2020
-		mov word [cs:fruit2],0
-		mov byte [cs:snakecounter], 0
-		cmp byte [cs:speed],6;max speed
-		je s1_timer
-		sub byte [cs:speed],4;increase in speed
-		jmp s1_timer
-s4_timer:		jmp snakemover
-s1_timer:		mov bx,50;speed change after 20 seconds
-				xor dx,dx
-				mov ax,[cs:time]
-				div bx
-				cmp dx,0
-				jne s2_timer
-				mov word [fruitflag],1
-s2_timer:			
-			mov ax, 101
-			sub ax, [cs:time]
-			cmp ax, 100
-			jae resume
-			cmp ax, 10
-			jae singleZero
-			push 0
-			call printnum
-			mov bx, 154
-			add bx, 2
-			push bx
-			push 0
-			call printnum
-			add bx, 2
-			push bx
-			jmp resume
-			
-singleZero:			
-			push 0
-			call printnum
-			mov bx, 154
-			add bx, 2
-			push bx
-			
-			
-resume:			
-			push ax
-			call printnum ; print tick count
-			mov byte [cs:timecounter], 0
-snakemover: 
-			inc byte [cs:snakecounter]; increment tick count
-			mov bh,[speed]
-			cmp byte[cs:snakecounter] ,bh 
-			jne exit_timer
-			mov byte [cs:snakecounter], 0
-			mov bx,[movementflag]
-			push bx
-			call movsnake
-			call colisionDetection
-		
-			call printsnake
-			push 314 ; position of score
-			push word[cs:score]
-			call printnum; print the score
-			xor ax, ax
-
-		call timeCheck
-
-		
-exit_timer:
-
-		call timeCheck
-		mov al, 0x20
-		out 0x20, al ; end of interrupt
-		pop di
+		mov si,reincarnation
+		mov di,snake
+		rep movsw
+		mov cx,20
+		mov [sizeS],cx
+		push word 0xb800
 		pop es
-		pop bx
-		pop dx
-		pop ax
-		iret ; return from interrupt 
+		and byte [up],0
+		and byte [down],0
+		and byte [right],0
+		and byte [left],0
+		push word [initializationT]
+		push word [deathS]
+		call play_sound
+		call disp_snake
+		mov ax,1
+		sub [lives],al
+		call disp_life
+	
+	its_fine:
+	pop dx
+	pop bx
+	pop ax
+	pop di
+	pop si
+	pop cx
+	ret
+;/////////////////////OVERLAP///////////////////
+
+;overlap:
+;		push bp
+;		mov bp,sp
+;		push cx
+;		push bx
+;		mov cx,[bp+4];size of the array
+;		mov bx,[bp+6];array
+;		mov ax,[bp+8];key
+;		loops:
+;			cmp ax,[bx]
+;			je exits
+;			add bx,2
+;			loop loops
+;			jmp nf
+;		exits:
+;		mov ax,1
+;		jmp endo
+;		nf:
+;		mov ax,0
+;		endo:
+;		pop bx
+;		pop cx
+;		pop bp
+;		ret 6
 		
-
-
-;------------------------------------
-;sub to end it all
-gameOver:	
-
-
-	; TODO play some sound
-	call clrscr;
-	mov ax, 0xb800;
+;///////////////ISRs and TSRs//////////////////////////	
+;//////////////////KBISR///////////////	
+kbisr:
+	push ax
+	push es
+	mov ax, 0xb800
 	mov es, ax
-	mov di, 1992
+	in al, 0x60 
+		mov ah,1
+		cmp [right],ah
+		je cmpright
+		cmp al, 30
+		jne cmpright
+		mov al,1
+		mov byte [left],al
+		mov al,0
+		mov byte[right],al
+		mov byte[up],al
+		mov byte[down],al
+		jmp nomatch
 	
 	
-	cmp byte [win], 0
-	jne winner
-
-		mov si, endGame
-		mov cx, 9
-		mov ah, 0x04
-		cld ; auto increment mode
-		nextGame: 
-		lodsb ; load next char in al
-		stosw ; print char/attribute pair
-		loop nextGame ; repeat for the whole string 
-		jmp theRest
-		;----- printing ssssssnake ends here
+	cmpright:
+		cmp [left],ah
+		je cmpup
 		
-winner:
-		mov si, winGame
-		mov cx, 11
-		mov ah, 0x02
-		cld ; auto increment mode
-		nextGame2: 
-		lodsb ; load next char in al
-		stosw ; print char/attribute pair
-		loop nextGame2 ; repeat for the whole string 
-		jmp theRest
-		;----- printing ssssssnake ends here
-theRest:	
+		cmp al, 32 
+		jne cmpup
+		mov al,1
+		mov byte [right],al
+		mov al,0
+		mov byte[left],al
+		mov byte[up],al
+		mov byte[down],al
+		jmp nomatch
+	
+	
+	
+	cmpup:
+		cmp [down],ah
+		je cmpdown
+		
+		cmp al, 17
+		jne cmpdown
+		mov al,1
+		mov byte [up],al
+		mov al,0
+		mov byte[right],al
+		mov byte[left],al
+		mov byte[down],al
+		jmp nomatch
+	
+	
+	
+	cmpdown:
+		cmp [up],ah
+		je terminate
+		
+		cmp al, 31 
+		jne terminate 
+		mov al,1
+		mov byte [down],al
+		mov al,0
+		mov byte[right],al
+		mov byte[up],al
+		mov byte[left],al
+		jmp nomatch
+	
+	terminate:
+		cmp al, 16
+		jne nomatch 
+		or byte [close],1
+		;call poison_E
+		
+		
+	nomatch: mov al, 0x20
+	out 0x20, al ; send EOI to PIC
+	pop es
+	pop ax
+	iret
+
+
+;/////////////////AUDIO-IMPLEMENTATIONS/////////////////////
+play_sound:
+	push bp
+	mov bp, sp
+	push ax
+	push bx
+	push cx
+
+	mov al, 182
+	out 43h, al
+	mov ax, [bp+4]	;move the passed frequency
+
+	out 42h, al
+	mov al, ah
+	out 42h, al
+	in al, 61h
+
+	or al, 00000011b
+	out 61h, al
+	mov bx, 25
+;pause1:
+ ;   mov cx, [bp+6]
+;pause2:
+ ;   dec cx
+  ;  jne pause2
+   ; dec bx
+    ;jne pause1
+    ;in al, 61h
+    ;and al, 11111100b
+    ;out 61h, al
+
+	pop cx
+	pop bx
+	pop ax
+	pop bp
+	ret 4
+
+;//////////////////GRAPHICAL-IMPLEMENTATIONS/////////////////////
+
+;///////////////////GEN-STAGE-1//////////////////////////////////////
+gen_s1:
+		push ax
+	mov word	[bkcol], 0x772f;0=blk,1=blu,2=gr,3=tr,4=rd,5=pp,6=or,7=wt
+	mov word	[obscol], 0x2223
+	mov word	[sbod], 0x5223
+	mov word	[head], 0x1032
+		call clrscr
+		push word [obscol]
+		push word 800
+		push word 79
+		push word 20
+		call rectangle
+		
+		mov ax,[bkcol]
+	or ah,0x0f
+		or byte [currentfood+1],0xf0
+		and [currentfood+1],ah
+		or byte [fooditem+1],0xf0
+		and [fooditem+1],ah
+		or byte [fooditem2+1],0xf0
+		and [fooditem2+1],ah
+		or byte [fooditem3+1],0xf0
+		and [fooditem3+1],ah
+		or byte [fooditem4+1],0xf0
+		and [fooditem4+1],ah
+		pop ax
+		ret
+
+;///////////////////LINE/////////////////////////////////////////
+line:
+		push bp
+		mov bp,sp
+		push ax
+		push cx
+		push di
+		mov di,[bp+8];ini
+		mov cx,[bp+6];fin
+		mov ax,[bp+10];col
+		loopll:
+			mov [es:di],ax
+			add di,[bp+4]
+			cmp di,cx
+			jne loopll
+		pop di
+		pop cx
+		pop ax
+		pop bp
+		ret 8
+;///////////////////GEN-STAGE-2//////////////////////////////////////
+gen_s2:
+		push ax
+	mov word	[bkcol], 0x222f;0=blk,1=blu,2=gr,3=tr,4=rd,5=pp,6=or,7=wt
+	mov word	[obscol], 0x7723
+	mov word	[sbod], 0x5223
+	mov word	[head], 0x1032
+		call clrscr
+		push word [obscol]
+		push word 800
+		push word 79
+		push word 20
+		call rectangle
+		
+		mov ax,[bkcol]
+	or ah,0x0f
+		or byte [currentfood+1],0xf0
+		and [currentfood+1],ah
+		or byte [fooditem+1],0xf0
+		and [fooditem+1],ah
+		or byte [fooditem2+1],0xf0
+		and [fooditem2+1],ah
+		or byte [fooditem3+1],0xf0
+		and [fooditem3+1],ah
+		or byte [fooditem4+1],0xf0
+		and [fooditem4+1],ah
+		
+		push word [obscol]
+		push word 1440
+		push word 1560
+		push word 2
+		call line
+		push word [bkcol]
+		push word 3840
+		push word 3900
+		push word 2
+		call line
+		push word [bkcol]
+		push word 840
+		push word 870
+		push word 2
+		call line
+		push word [bkcol]
+		push word 1600
+		push word 160*18
+		push word 160
+		call line
+		push word [bkcol]
+		push word 1758
+		push word 160*19-2
+		push word 160
+		call line
+		push word [obscol]
+		push word 920
+		push word 3960
+		push word 160
+		call line
+		pop ax
+		ret		
+;//////////////////INTERFACE///////////////	
+	interface:
+	push cx
+	push di
+	mov di,640
+	push word 0xb800
+	pop es
+	push ax
+	mov ax,0x3420
+	mov cx,80
+	rep stosw
+	call disp_life
+	call disp_score
+	call timee
+	pop ax
+	pop di
+	pop cx
+	ret
+
+;////////////////DISP_SCORE//////////////
+printsc:
+	push bp
+	mov bp, sp
+	push es
+	push ax
+	push bx
+	push cx
+	push dx
+	push di
+
+	mov ax, 0xb800
+	mov es, ax
+	mov ax, [bp+4]
+	mov bx, 10
+	mov cx, 0
+
+nextdigit:
+	xor dx, dx
+	div bx
+	add dl, 0x30
+	push dx
+	inc cx
+	cmp ax, 0
+	jnz nextdigit
+	xor di, di
+	mov di, [bp + 6]
+nextpos:
+	pop dx
+	mov dh, 0x07
+	mov word [es:di], dx
+	add di, 2
+	loop nextpos
+
+	pop di
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	pop es
+	pop bp
+	ret 4
+
+disp_score:
+	push si
+	push cx
+	push di
+	push ax
+
+	mov di, 280
+	mov si, Scoredisp
+	mov cx, 5
+	scloop:
+	mov ax, [si]
 	mov ah, 0x07
-	add di, 142
-	mov si, endScore
-		mov cx, 11
-		mov ah, 0x04
-		cld ; auto increment mode
-		nextYourScore: 
-		lodsb ; load next char in al
-		stosw ; print char/attribute pair
-		loop nextYourScore ; repeat for the whole string 
-		;----- printing ssssssnake ends here
-		
+	stosw
+	add si, 1
+	loop scloop
+	
+	add di, 2
+	push di
+	mov ax, [Score]
+	push ax
+	call printsc
 
-	add di, 138
-	mov si, endTime
-		mov cx, 10
-		mov ah, 0x04
-		cld ; auto increment mode
-		nextYourTime: 
-		lodsb ; load next char in al
-		stosw ; print char/attribute pair
-		loop nextYourTime ; repeat for the whole string 
-		;----- printing ssssssnake ends here
-	
-	push 2174; location to print score;
-	push word [score]
-	call printnum;
-	
-	push 2336
-	push word [time2]
-	call printnum
-	
-	
-		
-		call here;
+	pop ax
+	pop di
+	pop cx
+	pop si
+	ret 
+;////////////////DISP_WIN///////////////
+disp_win:
+push ax
+push bx
+push cx
+push bp
+mov ah, 0x13 ; service 13 - print string
+mov al, 1 ; subservice 01 – update cursor
+mov bh, 0 ; output on page 0
+mov bl, 7 ; normal attrib
+mov dx, 0x0103 ; row 10 column 3
+mov cx, 7 ; length of string
+push cs
+pop es ; segment of string
+mov bp, win ; offset of string
+int 0x10 ; call BIOS video service
+pop bp
+pop cx
+pop bx
+pop ax
+ret
+;////////////////DISP_LOSE/////////////
+disp_lose:
+push ax
+push bx
+push cx
+push bp
+mov ah, 0x13 ; service 13 - print string
+mov al, 1 ; subservice 01 – update cursor
+mov bh, 0 ; output on page 0
+mov bl, 6 ; normal attrib
+mov dx, 0x0103 ; row 10 column 3
+mov cx, 8 ; length of string
+push cs
+pop es ; segment of string
+mov bp, lose ; offset of string
+int 0x10 ; call BIOS video service
+pop bp
+pop cx
+pop bx
+pop ax
+ret
+;/////////////////TIMEE/////////////////
+timee:
+push ax
+push bx
+push cx
+push bp
+mov ah, 0x13 ; service 13 - print string
+mov al, 0 ; subservice 01 – update cursor
+mov bh, 0 ; output on page 0
+mov bl, 7 ; normal attrib
+mov dx, 0x003F ; row 10 column 3
+mov cx, 8 ; length of string
+push cs
+pop es ; segment of string
+mov bp, time ; offset of string
+int 0x10 ; call BIOS video service
+pop bp
+pop cx
+pop bx
+pop ax
+ret
+;////////////////DISP_LIFE//////////////
+disp_life:
+	push si
+	push cx
+	push di
+	mov di,440
+	mov si,Lives
+	mov cx,15
+	loopl:
+	mov ax,[si]
+	mov ah,0x07
+	stosw
+	add si,1
+	loop loopl
+	mov cx,[lives]
+	add cx,0x30
+	mov ch,0x07
+	add di,2
+	mov [es:di],cx
+	pop di
+	pop cx
+	pop si
+	ret
 
+
+;////////////RECTANGLE////////////////
+rectangle:
+	push bp
+	mov bp,sp
+	push ax
+	push di
+	push si
+	push cx
+	push dx
+	mov dx,[bp+10]
+	mov ax,0xb800
+	mov es,ax
+	shl word [bp+6],1
+	mov ax,[bp+4]
+	sub ax,1
+	mov [bp+4],ax
+	mov di,[bp+8]
+	mov ax,[bp+8]
+	mov cx,[bp+6]
+	add [bp+6],ax
+	loopre:
+		mov word [es:di],dx
+		add di,2
+		cmp di,[bp+6]
+		jne loopre
+		mov word [es:di],dx
+	mov di,1
+	mov ax,160
+	add ax,[bp+8]
+	mov [bp+6],cx
+	loopwe:
+		mov si,ax
+		mov word [es:si],dx
+		add si,[bp+6]
+		mov word [es:si],dx
+		mov si,ax
+		add di,1
+		add ax,160
+		cmp di,[bp+4]
+		jne loopwe
+	mov di,[bp+4]
+	mov ax,160
+	mul di
+	mov di,ax
+	add ax,[bp+6]
+	add ax,[bp+8]
+	add di,[bp+8]
+	mov dx,[bp+10]
+	loopde:
+		mov word [es:di],dx
+		add di,2
+		cmp di,ax
+		jne loopde
+	mov word [es:di],dx
 	
-;--------------------------------
-soundcreate: pusha
+	pop dx
+	pop cx
+	pop si
+	pop di
+	pop ax
+	pop bp
+	ret 8	
+;//////////////////HEART///////////////	
+heart:; parameter will be the base offset
+	push bp
+	mov bp,sp
+	mov ax,[bp+4]
+	mov si,heartS
+	mov di,ax
+	mov cx,9
+	rep movsw
+		
+	mov di,ax
+	add di,160
+	mov cx,9
+	rep movsw
+	
+	mov di,ax
+	add di,320
+	mov cx,9
+	rep movsw
+	
+	mov di,ax
+	add di,480
+	mov cx,9
+	rep movsw
+	pop bp 
+	ret 2
+		
+;//////////////////CLEARSCREEN///////////////		
+clrscr: 	
+	push es
+	push ax
+	push cx
+	push di	
+	mov ax, 0xb800
+	mov es, ax ; point es to video base
+	xor di, di ; point di to top left column
+	mov ax, [bkcol] ; space char in normal attribute
+	mov cx, 2000 ; number of screen locations
+	cld ; auto increment mode
+	rep stosw ; clear the whole screen
+	xor di, di ; point di to top left column
+	mov ax, 0x720 ; space char in normal attribute
+	mov cx,320 ; number of screen locations
+	cld ; auto increment mode
+	rep stosw ; clear the whole screen
+	
+	pop di	
+	pop cx
+	pop ax
+	pop es
+	ret
+
+;//////////////////SCORING///////////////
+scoreupdate:
+	push ax
+	mov ax, [currentfood]
+	cmp ax, 0x725
+	je f1
+	cmp ax, 0x740
+	je f2
+	cmp ax, 0x726
+	je f3
+	add word [Score], 20
+	jmp scoreupdatepops
+	f1:
+	add word [Score], 5
+	jmp scoreupdatepops
+	f2:
+	add word [Score], 10
+	jmp scoreupdatepops
+	f3:
+	add word [Score], 15
+	jmp scoreupdatepops
+	scoreupdatepops:
+	pop ax
+	ret
+;//////////////////POISON/////////////
+poisonplacement:
+	push bp
+	mov bp, sp
+	push ax
+	push bx
+	push cx
+	push dx
+	push di
+	push es
+
+	;removing old poison
+	mov di, [poisonpos]
+	mov ax, 0xb800
+	mov es, ax
+	mov dx, [bkcol]
+	mov word [es:di], dx
+
+	;adding new poison
+	mov bx, [foodpos]
+	sub bx, 4
+	mov word [poisonpos], bx
+	push bx
+	call check_valid
+	cmp ax, 1
+	je addpoisonnow
+
+	poisonplacementpops:
+	pop es
+	pop di
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	pop bp
+	ret
+
+	addpoisonnow:
+	mov di, [poisonpos]
+	mov ax, [poisonitem]
+	mov word [es:di], ax
+	mov byte [poisonplaced], 1
+	jmp poisonplacementpops
+
+;//////////////////FOOD///////////////	
+chkfoodpos:
+	push bp
+	mov bp, sp
+	push cx
+	push ax
+	push si
+	push dx
+	push bx
+
+	mov ax, 0xb800
+	mov es, ax
+	xor cx, cx
+	mov dx, [foodpos]
+	mov si, dx
+	cmp dx, 1000
+	jbe invalidpos
+
+foodbelow:
+	mov bx, [es:si]
+	cmp bx, [bkcol]
+	jne invalidpos
+
+valid:
+	mov byte [validfood], 1
+	jmp foodpops
+
+invalidpos:
+	mov byte [validfood], 0
+
+foodpops:
+	pop bx
+	pop dx
+	pop si
+	pop ax
+	pop cx
+	pop bp
+	ret
+
+foodplacement:
+	push bp
+	mov bp, sp
+	push ax
+	push cx
+	push dx
+	push di
+	push bx
+	push es
+
+generatefood:
+	;mov ah, 00h	;set AH to access 00 of 1A interrupt
+	;int 1Ah		;get timer values
+	mov ax, [sizeS]
+	mov dx,[tickcount]
+	add dx,[snake]
+	xor dl,dh
+	xor ax,dx
+	not dx
+	mul dl
+	xor dx, dx
+	xor di, di
+	mov bx, 0xb800
+	mov es, bx
+	mov bx, 2000
+	div bx
+	inc dx
+	and dx, 0xFFFE
+	mov di, dx
+	add di, 840
+	mov word [foodpos], di
+	call chkfoodpos
+	cmp byte [validfood], 1
+	jne generatefood
+
+	call poisonplacement
+
+	;generate different foods
+	mov ax, [snake]
+	xor dx, dx
+	mov cx, 20
+	div cx
+	;remainder now in dx
+	cmp dx, 5
+	jbe foodone
+	cmp dx, 10
+	jbe foodtwo
+	cmp dx, 14
+	jbe foodthree
+	mov bx, [fooditem4]
+	mov word [currentfood], bx
+	jmp contpo
+
+	foodone:
+	mov bx, [fooditem]
+	mov word [currentfood], bx
+	jmp contpo
+
+	foodtwo:
+	mov bx, [fooditem2]
+	mov word [currentfood], bx
+	jmp contpo
+
+	foodthree:
+	mov bx, [fooditem3]
+	mov word [currentfood], bx
+	jmp contpo
+
+	contpo:
+	mov word [es:di], bx
+	mov byte [foodplaced], 1
+
+	pop es
+	pop bx
+	pop di
+	pop dx
+	pop cx
+	pop ax
+	pop bp
+	ret
+
+;//////////////////EATING///////////////
+eating:
+	push bp
+	mov bp, sp
+	push ax
+	push dx
+
+	mov ax, [snake]
+	mov dx, [foodpos]
+	cmp ax, dx
+	jne poisoncheck
+	mov byte [foodplaced], 0
+	mov byte [validfood], 1
+	call grow
+	call grow
+	call grow
+	call grow
+	call scoreupdate
+	push word [normalT]
+	push word [eatS]
+	call play_sound
+	call foodplacement
+	call disp_score
+
+	poisoncheck:
+	mov dx, [poisonpos]
+	cmp ax, dx
+	jne eatingpops
+
+	;eatpoison
+	dec byte [lives]
+	call disp_life
+	mov byte [poisonplaced], 0
+	mov byte [foodplaced], 0
+	mov ax, [bkcol]
+	mov di, [foodpos]
+	mov word [es:di], ax
+	call foodplacement
+	cmp word [Score], 0
+	je eatingpops
+	sub word [Score], 5
+	call disp_score
+
+eatingpops:
+	pop dx
+	pop ax
+	pop bp
+	ret
+;/////////////TIMER////////////////
+printnum: push bp
+mov bp, sp
+push es
+push ax
+push bx
+push cx
+push dx
+push di
+mov ax, 0xb800
+mov es, ax ; point es to video base
+mov ax, [bp+4] ; load number in ax
+mov bx, 10 ; use base 10 for division
+mov cx, 0 ; initialize count of digits
+nextdigit1: mov dx, 0 ; zero upper half of dividend
+div bx ; divide by 10
+add dl, 0x30 ; convert digit into ascii value
+push dx ; save ascii value on stack
+inc cx ; increment count of values
+cmp ax, 0 ; is the quotient zero
+jnz nextdigit1 ; if no divide it again
+mov di, [bp+6]
+nextpos1: pop dx ; remove a digit from the stack
+mov dh, 0x07 ; use normal attribute
+mov [es:di], dx ; print char on screen
+add di, 2 ; move to next screen location
+loop nextpos1 ; repeat for all digits on stack
+pop di
+pop dx
+pop cx
+pop bx
+pop ax
+pop es
+pop bp
+ret 4
+; timer interrupt service routine
+tick_it:
+		cmp word [cs:sec],60
+		jne nottimeyet
+		inc word[cs:min]
+		and word [cs:sec],0
+		nottimeyet:
+		ret
+
+single_digit:
+			cmp word [cs:sec],10
+			jnb notsingle
+			push word 0xb800
+			pop es
+			mov word [es:142],0x720
+			notsingle:
+			ret
+timer: push ax
+		push bx
+
 mov     al, 182         ; Prepare the speaker for the
         out     43h, al         ;  note.
-        mov     ax, [bp+4]        ; Frequency number (in decimal)
+		mov bx,[cs:note_off]
+        mov     ax, [cs:notes+bx]        ; Frequency number (in decimal)
                                 ;  for middle C.
         out     42h, al         ; Output low byte.
         mov     al, ah          ; Output high byte.
         out     42h, al 
-        in      al, 61h         ; Turn on note (get value from
+		
+		mov ax,[cs:tickcount]
+		mov cl,6
+		div cl
+		
+	cmp ah,0
+		jne rests
+    play:    in      al, 61h         ; Turn on note (get value from
                                 ;  port 61h).
         or      al, 00000011b   ; Set bits 1 and 0.
         out     61h, al         ; Send new value.
-        mov     bx, 25          ; Pause for duration of note.
-.pause1:
-        mov     cx, 4000
-.pause2:
-        dec     cx
-        jne     .pause2
-        dec     bx
-        jne     .pause1
-        in      al, 61h         ; Turn off note (get value from
+        add     bx, 2          ; Pause for duration of note.
+		cmp bx,36
+		jne skipbb
+		mov bx,0
+		skipbb:
+		mov [cs:note_off],bx
+		jmp nexto
+		
+    rests:  ;  in      al, 61h         ; Turn off note (get value from
+                                ;  port 61h).
+        ;and     al, 11111100b   ; Reset bits 1 and 0.
+        ;out     61h, al         ; Send new value.
+	
+	nexto:
+
+	
+	inc word [cs:tickcount]; increment tick count
+	cmp word [cs:tickcount],18
+	jne exitt
+	inc word [cs:sec]
+	call tick_it
+	push word 140
+	push word [cs:sec]
+	call printnum ; print tick count
+	call single_digit
+	push word 136
+	push word [cs:min]
+	call printnum ; print tick count
+	mov ax,0
+	mov [cs:tickcount],ax
+	exitt:mov al, 0x20
+	out 0x20, al ; end of interrupt
+	pop bx
+	pop ax
+	iret ; return from interrupt
+;/////////////////////MAIN/////////////////////////////
+start:
+	;call gen_s1
+	mov ax,[bkcol]
+	or ah,0x0f
+		or byte [currentfood+1],0xf0
+		and [currentfood+1],ah
+		or byte [fooditem+1],0xf0
+		and [fooditem+1],ah
+		or byte [fooditem2+1],0xf0
+		and [fooditem2+1],ah
+		or byte [fooditem3+1],0xf0
+		and [fooditem3+1],ah
+		or byte [fooditem4+1],0xf0
+		and [fooditem4+1],ah
+	call clrscr
+	call interface
+	call disp_life
+	xor ax, ax
+	mov es, ax ; point es to IVT base
+	mov ax, [es:9*4]
+	mov [oldisr], ax ; save offset of old routine
+	mov ax, [es:9*4+2]
+	mov [oldisr+2], ax ; save segment of old routine
+	
+	mov ax, [es:8*4]
+	mov [oldtime], ax ; save offset of old routine
+	mov ax, [es:8*4+2]
+	mov [oldtime+2], ax ; save segment of old routine
+	
+
+	cli ; disable interrupts
+	mov word [es:9*4], kbisr ; store offset at n*4
+	mov [es:9*4+2], cs ; store segment at n*4+2
+	
+	mov word [es:8*4], timer; store offset at n*4
+	mov [es:8*4+2], cs ; store segment at n*4+2
+	
+	call disp_snake
+	sti ; enable interrupts
+	push word [initializationT]
+	push word [initializationS]	;play initialization sound
+	;call play_sound
+	call foodplacement
+	call disp_score
+	l1:
+
+	cmp byte [up],1
+	jne skipu
+		call eating
+		call snakeup	
+		call delayL
+		call disp_snake
+		
+	skipu:
+	
+	cmp byte [left],1
+	jne skipl
+		call eating
+		call snakeleft	
+		call delayL
+		call disp_snake
+		
+	skipl:
+	
+	cmp byte [right],1
+	jne skipr
+		call eating
+		call snakeright	
+		call delayL
+		call disp_snake
+		
+	skipr:
+	cmp byte [down],1
+	jne skipd
+		call eating
+		call snakedown	
+		call delayL
+		call disp_snake
+	
+	skipd:
+	inc word[cycle]
+	mov ax,[req]
+	cmp word [sizeS],ax
+	ja clse
+	cmp byte [lives],0
+	je rs
+	
+	cmp word [min],4
+	jne skipt
+	and word [min],0
+	and word [sec],0
+	dec word [lives]
+	call disp_life
+	skipt:
+	cmp byte [close],0
+	je l1
+	jne fss
+	
+	clse:;////////////////CLOSE///////////////////////	
+	cmp byte [nos],2
+	jne rc
+	call body_collision
+	call gen_s2
+	call interface
+	inc byte [lives]
+	mov word [req],30
+	call disp_snake
+	call disp_life
+	call foodplacement
+	dec byte [nos]
+	jmp l1
+	rc:
+		cmp byte [nos],3
+	jne rs
+	call body_collision
+	call gen_s1
+	call interface
+	inc byte [lives]
+	mov word [req],30
+	call disp_snake
+	call disp_life
+	call foodplacement
+	dec byte [nos]
+	jmp l1
+	rs:
+	cmp word [lives],0
+	jne nextoo
+	call disp_lose
+	jmp fss
+	nextoo:
+	call disp_win
+	fss:
+	xor ax,ax
+	mov es,ax;///////////NOTE	!!!	not going to clear the es in various functions
+	
+	mov ax, [oldisr] ; read old offset in ax
+	mov bx, [oldisr+2] ; read old segment in bx
+	cli ; disable interrupts
+	mov [es:9*4], ax ; restore old offset from ax
+	mov [es:9*4+2], bx ; restore old segment from bx
+	sti ; enable interrupts
+	
+	mov ax, [oldtime] ; read old offset in ax
+	mov bx, [oldtime+2] ; read old segment in bx
+	cli ; disable interrupts
+	mov [es:8*4], ax ; restore old offset from ax
+	mov [es:8*4+2], bx ; restore old segment from bx
+	sti ; enable interrupts
+	  in      al, 61h         ; Turn off note (get value from
                                 ;  port 61h).
         and     al, 11111100b   ; Reset bits 1 and 0.
         out     61h, al         ; Send new value.
-			popa
-			ret 2
-;--------------------------------
-;subroutine to move snake left
-movsnake:		push bp
-				mov bp,sp
-				push ax
-				push bx
-				push cx
-				push di
-				push si
-				push es
-				
-				mov bx,snake
-				mov cx,[sizesnake]
-				dec cx
-				mov si,cx
-				shl si,1
-				mov di,[bx+si]
-				cmp word [sizecounter],0;checks if the size is to be increased
-				jne s5_movsnake
-				mov ax,0xb800
-				mov es,ax
-				mov word [es:di],0x2020
-				jmp l1_movsnake
-s5_movsnake:	dec word [sizecounter]
-				inc word [sizesnake]
-				add si,2
-				mov word [snake+si],di
-				sub si,2
-				
-l1_movsnake:	sub si,2
-				mov ax,[bx+si]
-				add si,2
-				mov word [bx+si],ax
-				sub si,2
-				loop l1_movsnake
-				cmp word [bp+4],2
-				jne s1_movsnake
-				add word [bx],2
-s1_movsnake:
-				cmp word [bp+4],4
-				jne s2_movsnake
-				sub word [bx],2
-
-s2_movsnake:	cmp word [bp+4],1
-				jne s3_movsnake
-				sub word [bx],160
-
-s3_movsnake:	cmp word [bp+4],3
-				jne s4_movsnake
-				add word [bx],160
-
-s4_movsnake:	
-				cmp word [sizesnake],32
-				jne s6_movsnake
-				call nextlevel
-				
-s6_movsnake:	pop es
-				pop si
-				pop di
-				pop cx
-				pop bx
-				pop ax
-				pop bp
-				ret 2
-;-------------------------------
-nextlevel:
-			push ax
-			push cx
-			push di
-			push es
-			push bx
-			
-			
-			inc word [level]
-			cmp word [level],1
-			jne s1_nextlevel
-			mov ax,0xb800
-			mov es,ax
-			mov di,156
-			mov word [es:di],0x0720
-			mov word [es:di+2],0x0720
-			mov word [es:di+4],0x0720
-			mov di,314
-			mov word [es:di],0x0720
-			mov word [es:di+2],0x0720
-			mov word [es:di+4],0x0720
-			mov word [time],0
-			call lifeReset
-			mov bx,level1
-			mov cx,97
-l1_nextlevel:	mov di,[bx]
-				mov word [es:di],0x1020
-				add bx,2
-				loop l1_nextlevel
-				jmp s2_nextlevel
-s1_nextlevel:	
-			cmp word [level],2
-			jne s2_nextlevel
-				mov ax,0xb800
-			mov es,ax
-			mov di,156
-			mov word [es:di],0x0720
-			mov word [es:di+2],0x0720
-			mov word [es:di+4],0x0720
-			mov di,314
-			mov word [es:di],0x0720
-			mov word [es:di+2],0x0720
-			mov word [es:di+4],0x0720
-			mov word [time],0
-			call lifeReset
-				mov bx,level1
-				mov cx,97
-l2_nextlevel:	mov di,[bx]
-				mov word [es:di],0x2020
-				add bx,2
-				loop l2_nextlevel
-					
-			
-s2_nextlevel:			
-			pop bx
-			pop es
-			pop di
-			pop cx
-			pop ax
-			ret
-			
-
-;-------------------------------
-; subroutine to clear the screen
-clrscr:
- push es
- push ax
- push cx
- push di
- mov ax, 0xb800
- mov es, ax ; point es to video base
- xor di, di ; point di to top left column
- mov ax, 0x0720 ; space char in normal attribute
- mov cx, 2000 ; number of screen locations
- cld ; auto increment mode
- rep stosw ; clear the whole screen
- pop di 
- pop cx
- pop ax
- pop es
- ret 
-;-----------------------------------
-
-; sub to print life at the given location of parameter
-drawlife:
-		push bp
-		mov bp, sp
-		push ax
-		push es
-		push di
-
-
-		mov ax, 0xb800
-		mov es, ax
-		mov  di , [bp + 4]
-		mov word [es:di] , 0x0403
-		
-		pop di
-		pop es
-		pop ax
-		pop bp
-		ret 2
-;-----------------------------
-
-deletelife:
-		push bp
-		mov bp, sp
-		push ax
-		push es
-		push di
-
-
-		mov ax, 0xb800
-		mov es, ax
-		mov di , [bp + 4]
-		mov word[es:di] , 0x0720
-		
-		pop di
-		pop es
-		pop ax
-		pop bp
-		ret 2
-;-----------------------------
-	
-
-;Sub to print header
-printHeader:
-		
-		push ax
-		push cx
-		push di
-		push si
-		push es
-		
-	
-		xor ax, 0xb800
-		mov es, ax
-		mov di , 70; priting ssssssnake starts here
-		mov si, Ssnake
-		mov cx, 10
-		mov ah, 0x07
-		cld ; auto increment mode
-		nextsnake: 
-		lodsb ; load next char in al
-		stosw ; print char/attribute pair
-		loop nextsnake ; repeat for the whole string 
-		;----- printing ssssssnake ends here
-		
-		mov di, 144; priting time: starts here
-		mov si, printTime
-		mov cx, 5
-		mov ah, 0x07
-		cld ; auto increment mode
-		nexttimer: 
-		lodsb ; load next char in al
-		stosw ; print char/attribute pair
-		loop nexttimer ; repeat for the whole string 
-		
-		
-		mov di, 302; priting score: starts here
-		mov si, printScore
-		mov cx, 6
-		mov ah, 0x07
-		cld ; auto increment mode
-		nextscore: 
-		lodsb ; load next char in al
-		stosw ; print char/attribute pair
-		loop nextscore ; repeat for the whole string 
-		
-		push 162
-		call drawlife
-		push 164
-		call drawlife
-		push 166
-		call drawlife
-		
-		pop es
-		pop si
-		pop di 
-		pop cx
-		pop ax
-		ret
-
-;----------------------------
-
-;Sub to print the borders
-printBorder:
-		push ax
-		push di
-		push si
-		push es
-	
-		xor ax, 0xb800
-		mov es, ax
-		mov di, 640; start of the third line
-		mov ah, 16 ; back ground color blue
-		mov al, ' '
-L1_printBorder:
-			cmp di, 800; loop to print the first line of border horizontal
-			je L2_printBorder
-			mov word [es:di], ax
-			add di, 2
-			jmp L1_printBorder
-L2_printBorder:
-			cmp di, 3840; loop to print the two border lines vertical
-			je L3_printBorder
-			mov word [es:di], ax
-			add di, 2
-			mov word [es:di], ax
-			;add di, 154
-			add di, 2
-			mov si, di
-			add si, 152
-			mov ah, 32
-			L2_2printBorder: ;make it green
-				mov word [es:di], ax
-				add di, 2		
-				cmp di, si
-				jne L2_2printBorder	
-					
-			mov ah, 16		
-			mov word [es:di], ax
-			add di, 2
-			mov word [es:di], ax
-			add di, 2
-			jmp L2_printBorder
-L3_printBorder:
-			cmp di, 4000; loop to print the last line of border horizontal
-			je back_printBorder
-			mov word [es:di], ax
-			add di, 2
-			jmp L3_printBorder
-
-back_printBorder:
-		
-		pop es
-		pop si
-		pop di
-		pop ax
-		ret
-;------------------------------
-
-
-start:	
-		
-			
-			call startGameScreen
-
-		int 0x16
-		xor ax, ax
-		call clrscr
-		
-		
-		
-		call printHeader
-		call printBorder
-		call printsnake
-		push word [fruitvalue]
-		push word [randCol]
-		push word [randRow]
-		call printfruit
-		
-		mov ax,11800
-		out 0x40,al
-		mov al,ah
-		out 0x40,al
-		xor ax, ax
-		mov es, ax ; point es to IVT base
-		cli ; disable interrupts
-		mov word [es:8*4], timer; store offset at n*4
-		mov [es:8*4+2], cs ; store segment at n*4+2
-		sti ; enable interrupts
-l1:
-		
-		call timeCheck
-		mov ah,0; Get keystroke
-		int 0x16; AH = BIOS scan code
-		cmp ah,0x48;up
-		jne skip1
-		cmp word [cs:movementflag],3;checks bakward motion
-		je skip1
-		mov word [cs:movementflag],1
-skip1:
-		call timeCheck
-		cmp ah,0x4D;right
-		jne skip2
-		cmp word [cs:movementflag],4;checks bakward motion
-		je skip2
-		mov word [cs:movementflag],2
-skip2:	
-		call timeCheck
-		cmp ah,0x50;down
-		jne skip3
-		cmp word [cs:movementflag],1;checks bakward motion
-		je skip3
-		mov word [cs:movementflag],3
-skip3:
-		call timeCheck
-		cmp ah,0x4B;left
-		jne skip4
-		cmp word [cs:movementflag],2;checks bakward motion
-		je skip4
-		mov word [cs:movementflag],4
-skip4:
-		call timeCheck
-		cmp ah,1
-		jne l1  ; loop until Esc is pressed		
-		
-here:
-mov ax,0x4c00
-int 21h
-
-;-------------------------------------------------
-
-
-
-; subroutine to print a string
-; takes row no, column no, address of string, and its length
-; as parameters
-printString: push bp
- mov bp, sp
- push es
- push ax
- push bx
- push cx
- push dx
- push si
- push di
- mov ax, 0xb800
- mov es, ax ; point es to video base
- mov di, 80 ; load di with columns per row
- mov ax, [bp+10] ; load ax with row number
- mul di ; multiply with columns per row
- mov di, ax ; save result in di
- add di, [bp+12] ; add column number
- shl di, 1 ; turn into byte count
- mov si, [bp+6] ; string to be printed
- mov cx, [bp+4] ; length of string
- mov ah, [bp + 8] ; normal attribute is fixed
-nextchar: mov al, [si] ; load next char of string
- mov [es:di], ax ; show next char on screen
- add di, 2 ; move to next screen location
- add si, 1 ; move to next char
- loop nextchar ; repeat the operation cx times
- pop di
- pop si
- pop dx
- pop cx
- pop bx
- pop ax 
- pop es
- pop bp
- ret 10 
-
-
- 
- ; subroutine to print blue the screen
-Blue:
- push es
- push ax
- push cx
- push di
- mov ax, 0xb800
- mov es, ax ; point es to video base
- xor di, di ; point di to top left column
- mov ax, 0x3020 ; space char in normal attribute
- mov cx, 2000 ; number of screen locations
- cld ; auto increment mode
- rep stosw ; clear the whole screen
- pop di 
- pop cx
- pop ax
- pop es
- ret 
-;-----------------------------------
- 
-;subroutine to print start screen
-startGameScreen:
-		push ax
-		push dx
-		push es
-		push di
-		push si
-		
-		;push 0x1020
-		call Blue
-		mov ax,0xb800
-		mov es,ax
-	
-		mov di,0
-	startBorderUp:
-		mov word[es:di],0x1020
-		add di,2
-		cmp di,160
-		jne startBorderUp
-		
-		mov di,3840
-	startBorderDown:
-		mov word[es:di],0x1020
-		add di,2
-		cmp di,4000
-		jne startBorderDown
-		
-		mov di,318
-	startBorderRight:
-		mov word[es:di],0x1020
-		add di,160
-		cmp di,3998
-		jne startBorderRight
-		
-		mov di,160
-	startBorderLeft:
-		mov word[es:di],0x1020
-		add di,160
-		cmp di,3840
-		jne startBorderLeft
-		
-		mov di,316
-	startBorderRight1:
-		mov word[es:di],0x1020
-		add di,160
-		cmp di,3996
-		jne startBorderRight1
-		
-		mov di,162
-	startBorderLeft2:
-		mov word[es:di],0x1020
-		add di,160
-		cmp di,3842
-		jne startBorderLeft2
-	
-	;center box top bar
-		mov di,660
-		mov si,di
-		add si,120
-	nextchar1a:
-		mov word [es:di],0x6020
-		add di,2
-		cmp di,si
-		jne nextchar1a
-		
-		mov di,820
-		mov si,di
-		add si,120
-	
-	;center box main
-	nextchar1b:
-		mov word [es:di],0x0020
-		add di,2
-		cmp di,si
-		jne nextchar1b
-		add di,40
-		mov si,di
-		add si,120
-		cmp di,2000
-		jle nextchar1b
-		
-		;printString takes the x position, y position, attribute, address of string and its length as parameters
-		;print all welcome messages
-		push 28
-		push 4
-		push 0x6A
-		push welcomeMessage
-		push 27
-		call printString
-		
-		push 25
-		push 6
-		push 0x04
-		push welcomeMessage2
-		push 31
-		call printString
-		
-		push 25
-		push 7
-		push 0x04
-		push welcomeMessage3
-		push 35
-		call printString
-		
-		
-		
-		mov ah,0x02
-		mov al,'*'
-		mov word[es:1620],ax
-		push 11
-		push 10
-		push 0x02
-		push welcomeMessage4
-		push 59
-		call printString
-		
-		mov ah,0x02
-		mov al,'*'
-		mov word[es:1780],ax
-		push 11
-		push 11
-		push 0x02
-		push welcomeMessage5
-		push 56
-		call printString
-		
-		mov ah,0x02
-		mov al,'*'
-		mov word[es:1940],ax
-		push 11
-		push 12
-		push 0x02
-		push welcomeMessage6
-		push 52
-		call printString
-		
-		
-		
-		pop si
-		pop di
-		pop es
-		pop dx
-		pop ax
-		ret
-;-------------------------------------------------------------
-
-
-
-
+	mov ax, 0x4c00 ; terminate program
+	int 0x21
